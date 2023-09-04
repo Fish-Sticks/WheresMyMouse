@@ -5,6 +5,7 @@
 To use this use the NUMPAD 8, 4, 6, and 2. Optionally if you want a more closer layout you can use 5 to go down instead of 2.<br>
 NUMPAD 0 makes the mouse move slower for more precise spots.<br>
 NUMPAD 7 is left click, and NUMPAD 9 is right click.<br>
+This does not support scrolling.<br>
 To exit and close the virtual mouse at any time press the DEL key.<br>
 
 ### I can't run the program!
