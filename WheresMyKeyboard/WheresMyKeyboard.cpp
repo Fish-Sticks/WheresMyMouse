@@ -155,6 +155,10 @@ void updating_thread()
 
         if (MOVE_X || MOVE_Y)
             mouse_event(MOUSEEVENTF_MOVE, MOVE_X, MOVE_Y, 0, GetMessageExtraInfo());
+        if (IS_SCROLL_UP_DOWN)
+            mouse_event(MOUSEEVENTF_WHEEL, 0, 0, SCROLL_SPEED + SCROLL_OFFSET, GetMessageExtraInfo());
+        if (IS_SCROLL_DOWN_DOWN)
+            mouse_event(MOUSEEVENTF_WHEEL, 0, 0, -(SCROLL_SPEED + SCROLL_OFFSET), GetMessageExtraInfo());
 
         if (IS_LEFT_CLICKING == 3)
         {
@@ -166,17 +170,6 @@ void updating_thread()
         {
             IS_RIGHT_CLICKING = 1;
             mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, GetMessageExtraInfo());
-        }
-
-        if (IS_SCROLL_UP_DOWN)
-        {
-            // 6 portions of wheel delta to make a full rotate
-            mouse_event(MOUSEEVENTF_WHEEL, 0, 0, SCROLL_SPEED + SCROLL_OFFSET, GetMessageExtraInfo());
-        }
-
-        if (IS_SCROLL_DOWN_DOWN)
-        {
-            mouse_event(MOUSEEVENTF_WHEEL, 0, 0, -(SCROLL_SPEED + SCROLL_OFFSET), GetMessageExtraInfo());
         }
 
         MOVE_X = 0;
@@ -195,7 +188,7 @@ __declspec(dllexport) void setup_hook()
         std::printf("Setup global keyboard hook!\n");
     }
     else
-        std::printf("Failed to setup keyboard hook! Input may be annoying as arrow keys will trigger actions in the app.\n");
+        std::printf("Failed to setup keyboard hook! Input may be annoying as movement keys will trigger actions in the app.\n");
 }
 
 __declspec(dllexport) void remove_hook()
