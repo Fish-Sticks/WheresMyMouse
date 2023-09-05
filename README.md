@@ -13,7 +13,8 @@ PAGEUP to scroll up, PAGEDOWN to scroll down. Hold NUMPAD0 while scrolling to sc
 To exit and close the virtual mouse at any time press the DEL key.<br>
 
 ### The keys aren't working!
-Ensure the keys are enabled by making sure NUMLOCK is on.
+~~Ensure the keys are enabled by making sure NUMLOCK is on.~~
+Try upgrading to a new release, NUMLOCK is ignored in future versions and will work regardless.
 
 ### I can't run the program!
 Go to the Group Policy Editor > Computer Configuration > Windows Settings > Security Settings > Local Policies > Security Options and set User Account Control: Only elevate executables that are signed and validated to Disabled.<br>
