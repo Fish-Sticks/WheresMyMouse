@@ -1,6 +1,7 @@
 #include <Windows.h>
 #include <iostream>
 #include <shared_mutex>
+#include <unordered_map>
 
 static HHOOK keyboard_hook = NULL;
 
@@ -15,64 +16,96 @@ int SCROLL_SPEED = WHEEL_DELTA / 4;
 // Move variables
 int MOVE_X = 0, MOVE_Y = 0, OFFSET = 0, SCROLL_OFFSET = 0;
 
+// Use physical variant to ignore things such as shift key doing other functionality (most games use shift as run, this would interfere and break the mouse)
+const UINT SLOW_KEY = MapVirtualKeyA(VK_NUMPAD0, MAPVK_VK_TO_VSC);
+const UINT UP_KEY = MapVirtualKeyA(VK_NUMPAD8, MAPVK_VK_TO_VSC);
+const UINT DOWN_KEY = MapVirtualKeyA(VK_NUMPAD2, MAPVK_VK_TO_VSC);
+const UINT DOWN_KEY_2 = MapVirtualKeyA(VK_NUMPAD5, MAPVK_VK_TO_VSC);
+const UINT LEFT_KEY = MapVirtualKeyA(VK_NUMPAD4, MAPVK_VK_TO_VSC);
+const UINT RIGHT_KEY = MapVirtualKeyA(VK_NUMPAD6, MAPVK_VK_TO_VSC);
+const UINT LEFT_CLICK_KEY = MapVirtualKeyA(VK_NUMPAD7, MAPVK_VK_TO_VSC_EX);
+const UINT RIGHT_CLICK_KEY = MapVirtualKeyA(VK_NUMPAD9, MAPVK_VK_TO_VSC);
+const UINT SCROLL_UP_KEY = MapVirtualKeyA(VK_PRIOR, MAPVK_VK_TO_VSC);
+const UINT SCROLL_DOWN_KEY = MapVirtualKeyA(VK_NEXT, MAPVK_VK_TO_VSC);
+
+// Constant enums so the switch statement won't complain
+// Make sure if they are the same mapping you mark them the same value
+enum struct key_type_t : std::uint8_t
+{
+    NONE = 0, SLOW, UP, DOWN, LEFT, RIGHT, LEFT_CLICK, RIGHT_CLICK = 69, SCROLL_UP = 69, SCROLL_DOWN
+};
+
+// Mappings from scancode to constant key codes
+std::unordered_map<UINT, key_type_t> key_mappings = 
+{
+    {SLOW_KEY, key_type_t::SLOW}, {UP_KEY, key_type_t::UP}, {DOWN_KEY, key_type_t::DOWN}, {DOWN_KEY_2, key_type_t::DOWN}, {LEFT_KEY, key_type_t::LEFT}, {RIGHT_KEY, key_type_t::RIGHT},
+    {LEFT_CLICK_KEY, key_type_t::LEFT_CLICK}, {RIGHT_CLICK_KEY, key_type_t::RIGHT_CLICK}, {SCROLL_UP_KEY, key_type_t::SCROLL_UP}, {SCROLL_DOWN_KEY, key_type_t::SCROLL_DOWN}
+};
+
 LRESULT CALLBACK LL_keyboard_hook(int code, WPARAM wParam, LPARAM lParam)
 {    
     if (code < 0)
         return CallNextHookEx(NULL, code, wParam, lParam);
 
-    const DWORD keycode = reinterpret_cast<LPKBDLLHOOKSTRUCT>(lParam)->vkCode;
+    LPKBDLLHOOKSTRUCT hook_struct = reinterpret_cast<LPKBDLLHOOKSTRUCT>(lParam);
+    const UINT scancode = hook_struct->scanCode;
+    const bool IS_KEY_DOWN = wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN;
+    const bool IS_EXTENDED_KEY = hook_struct->flags & LLKHF_EXTENDED; // is it a functionality key?
+
+    key_type_t translated_key = key_type_t::NONE;
+    if (const auto found = key_mappings.find(scancode); found != key_mappings.end())
+        translated_key = found->second;
 
     // Key access scope, out of scope the lock dies and the resource is free
+    if (translated_key != key_type_t::NONE)
     {
         std::lock_guard<std::shared_mutex> key_access_mutex{ my_mutex };
-        switch (keycode)
-        {
-        case VK_NUMPAD8:
-            IS_UP_DOWN = (wParam == WM_KEYDOWN ? IS_UP_DOWN = 1 : 0);
-            break;
-        case VK_NUMPAD5: // same functionality incase user wants to use it more like an "arrow keys" format than a long way
-        case VK_NUMPAD2:
-            IS_DOWN_DOWN = (wParam == WM_KEYDOWN ? IS_DOWN_DOWN = 1 : 0);
-            break;
-        case VK_NUMPAD4:
-            IS_LEFT_DOWN = (wParam == WM_KEYDOWN ? IS_LEFT_DOWN = 1 : 0);
-            break;
-        case VK_NUMPAD6:
-            IS_RIGHT_DOWN = (wParam == WM_KEYDOWN ? IS_RIGHT_DOWN = 1 : 0);
-            break;
-        case VK_NUMPAD7:
-            IS_LEFT_MOUSE_DOWN = (wParam == WM_KEYDOWN ? IS_LEFT_MOUSE_DOWN = 1 : 0);
-            break;
-        case VK_NUMPAD9:
-            IS_RIGHT_MOUSE_DOWN = (wParam == WM_KEYDOWN ? IS_RIGHT_MOUSE_DOWN = 1 : 0);
-            break;
-        case VK_NUMPAD0:
-            IS_SLOW_DOWN = (wParam == WM_KEYDOWN ? IS_SLOW_DOWN = 1 : 0);
-            break;
-        case VK_PRIOR:
-            IS_SCROLL_UP_DOWN = (wParam == WM_KEYDOWN ? IS_SCROLL_UP_DOWN = 1 : 0);
-            break;
-        case VK_NEXT:
-            IS_SCROLL_DOWN_DOWN = (wParam == WM_KEYDOWN ? IS_SCROLL_DOWN_DOWN = 1 : 0);
-            break;
-        }
-    }
 
-    // If it's one of our virtual mouse keys we cannot let it pass through ; it's going to interfere and make things super duper annoying
-    switch (keycode)
-    {
-    case VK_NUMPAD7:
-    case VK_NUMPAD8:
-    case VK_NUMPAD9:
-    case VK_NUMPAD4:
-    case VK_NUMPAD6:
-    case VK_NUMPAD5:
-    case VK_NUMPAD2:
-    case VK_NUMPAD0:
-    case VK_PRIOR:
-    case VK_NEXT:
-        return 1; // "If the hook procedure processed the message, it may return a nonzero value to prevent the system from passing the message to the rest of the hook chain or the target window procedure."
-        break;
+        if (!IS_EXTENDED_KEY)
+        {
+            switch (translated_key)
+            {
+            case key_type_t::UP:
+                IS_UP_DOWN = (IS_KEY_DOWN ? IS_UP_DOWN = 1 : 0);
+                break;
+            case key_type_t::DOWN: // same functionality incase user wants to use it more like an "arrow keys" format than a long way
+                IS_DOWN_DOWN = (IS_KEY_DOWN ? IS_DOWN_DOWN = 1 : 0);
+                break;
+            case key_type_t::LEFT:
+                IS_LEFT_DOWN = (IS_KEY_DOWN ? IS_LEFT_DOWN = 1 : 0);
+                break;
+            case key_type_t::RIGHT:
+                IS_RIGHT_DOWN = (IS_KEY_DOWN ? IS_RIGHT_DOWN = 1 : 0);
+                break;
+            case key_type_t::LEFT_CLICK:
+                IS_LEFT_MOUSE_DOWN = (IS_KEY_DOWN ? IS_LEFT_MOUSE_DOWN = 1 : 0);
+                break;
+            case key_type_t::RIGHT_CLICK:
+                IS_RIGHT_MOUSE_DOWN = (IS_KEY_DOWN ? IS_RIGHT_MOUSE_DOWN = 1 : 0);
+                break;
+            case key_type_t::SLOW:
+                IS_SLOW_DOWN = (IS_KEY_DOWN ? IS_SLOW_DOWN = 1 : 0);
+                break;
+            }
+
+            // If it's one of our virtual mouse keys we cannot let it pass through ; it's going to interfere and make things super duper annoying
+            return 1;
+        }
+        else if (IS_EXTENDED_KEY && (translated_key == key_type_t::SCROLL_DOWN || translated_key == key_type_t::SCROLL_UP)) // functionality version character keys
+        {
+            switch (translated_key)
+            {
+            case key_type_t::SCROLL_UP:
+                IS_SCROLL_UP_DOWN = (IS_KEY_DOWN ? IS_SCROLL_UP_DOWN = 1 : 0);
+                break;
+            case key_type_t::SCROLL_DOWN:
+                IS_SCROLL_DOWN_DOWN = (IS_KEY_DOWN ? IS_SCROLL_DOWN_DOWN = 1 : 0);
+                break;
+            }
+
+            // If it's one of our virtual mouse keys we cannot let it pass through ; it's going to interfere and make things super duper annoying
+            return 1;
+        }
     }
 
     return CallNextHookEx(NULL, code, wParam, lParam);
