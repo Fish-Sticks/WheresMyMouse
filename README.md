@@ -8,7 +8,7 @@ NUMPAD 0 makes the mouse move slower for more precise spots.<br>
 <br>
 NUMPAD 7 is left click, and NUMPAD 9 is right click.<br>
 <br>
-This does not support scrolling.<br>
+PAGEUP to scroll up, PAGEDOWN to scroll down. Hold NUMPAD0 while scrolling to scroll slower<br>
 <br>
 To exit and close the virtual mouse at any time press the DEL key.<br>
 
