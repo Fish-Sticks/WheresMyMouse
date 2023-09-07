@@ -120,12 +120,12 @@ void updating_thread()
             std::lock_guard<std::shared_mutex> key_access_mutex{ my_mutex };
             if (IS_SLOW_DOWN)
             {
-                SCROLL_OFFSET = 0;
+                SCROLL_OFFSET = SCROLL_SPEED / 2;
                 OFFSET = MOUSE_SPEED / 2;
             }
             else
             {
-                SCROLL_OFFSET = SCROLL_SPEED / 2;
+                SCROLL_OFFSET = 0;
                 OFFSET = 0;
             }
 
