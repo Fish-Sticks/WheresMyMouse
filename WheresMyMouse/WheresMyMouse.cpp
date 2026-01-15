@@ -1,6 +1,8 @@
 #include <iostream>
 #include <Windows.h>
 #include <thread>
+#include <Xinput.h>
+#pragma comment(lib, "Xinput.lib")
 
 __declspec(dllimport) void setup_hook();
 __declspec(dllimport) void remove_hook();
@@ -36,6 +38,7 @@ int main()
 	std::printf("To stop the virtual mouse press the delete key on your keyboard labeled \"DEL\"\n");
 	std::printf("Use the numpad to move the mouse, hold NUMPAD0 to make it move slower and refine what you want to click.\n");
 	std::printf("Make sure numlock is on.\n");
+	std::printf("2026 update! We finally support controllers :)\n");
 
 	// Set up all initialization shit
 	setup();

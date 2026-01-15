@@ -3,11 +3,19 @@
 #include <shared_mutex>
 #include <unordered_map>
 
+// Controller support patch, only took me 3 years!
+#include <Xinput.h>
+#include <winuser.h>
+#include "resource.h"
+#pragma comment(lib, "Xinput.lib")
+
+static HMODULE dll = NULL;
 static HHOOK keyboard_hook = NULL;
 
 // Data must be accessible via mutex to prevent multiple threads from race condition (keyboard hooking thread & updating thread)
 std::shared_mutex my_mutex{};
 int IS_UP_DOWN = 0, IS_DOWN_DOWN = 0, IS_LEFT_DOWN = 0, IS_RIGHT_DOWN = 0, IS_SLOW_DOWN = 0, IS_LEFT_MOUSE_DOWN = 0, IS_RIGHT_MOUSE_DOWN = 0, IS_LEFT_CLICKING = 0, IS_RIGHT_CLICKING = 0, IS_SCROLL_DOWN_DOWN = 0, IS_SCROLL_UP_DOWN = 0;
+int IS_USING_CONTROLLER = 0;
 
 // Adjust as needed
 int MOUSE_SPEED = 10;
@@ -57,7 +65,7 @@ LRESULT CALLBACK LL_keyboard_hook(int code, WPARAM wParam, LPARAM lParam)
         translated_key = found->second;
 
     // Key access scope, out of scope the lock dies and the resource is free
-    if (translated_key != key_type_t::NONE)
+    if (translated_key != key_type_t::NONE && !IS_USING_CONTROLLER)
     {
         std::lock_guard<std::shared_mutex> key_access_mutex{ my_mutex };
 
@@ -66,25 +74,25 @@ LRESULT CALLBACK LL_keyboard_hook(int code, WPARAM wParam, LPARAM lParam)
             switch (translated_key)
             {
             case key_type_t::UP:
-                IS_UP_DOWN = (IS_KEY_DOWN ? IS_UP_DOWN = 1 : 0);
+                IS_UP_DOWN = IS_KEY_DOWN;
                 break;
             case key_type_t::DOWN: // same functionality incase user wants to use it more like an "arrow keys" format than a long way
-                IS_DOWN_DOWN = (IS_KEY_DOWN ? IS_DOWN_DOWN = 1 : 0);
+                IS_DOWN_DOWN = IS_KEY_DOWN;
                 break;
             case key_type_t::LEFT:
-                IS_LEFT_DOWN = (IS_KEY_DOWN ? IS_LEFT_DOWN = 1 : 0);
+                IS_LEFT_DOWN = IS_KEY_DOWN;
                 break;
             case key_type_t::RIGHT:
-                IS_RIGHT_DOWN = (IS_KEY_DOWN ? IS_RIGHT_DOWN = 1 : 0);
+                IS_RIGHT_DOWN = IS_KEY_DOWN;
                 break;
             case key_type_t::LEFT_CLICK:
-                IS_LEFT_MOUSE_DOWN = (IS_KEY_DOWN ? IS_LEFT_MOUSE_DOWN = 1 : 0);
+                IS_LEFT_MOUSE_DOWN = IS_KEY_DOWN;
                 break;
             case key_type_t::RIGHT_CLICK:
-                IS_RIGHT_MOUSE_DOWN = (IS_KEY_DOWN ? IS_RIGHT_MOUSE_DOWN = 1 : 0);
+                IS_RIGHT_MOUSE_DOWN = IS_KEY_DOWN;
                 break;
             case key_type_t::SLOW:
-                IS_SLOW_DOWN = (IS_KEY_DOWN ? IS_SLOW_DOWN = 1 : 0);
+                IS_SLOW_DOWN = IS_KEY_DOWN;
                 break;
             }
 
@@ -109,6 +117,108 @@ LRESULT CALLBACK LL_keyboard_hook(int code, WPARAM wParam, LPARAM lParam)
     }
 
     return CallNextHookEx(NULL, code, wParam, lParam);
+}
+
+
+// Added controller support into its own thread!
+void update_controller_state()
+{
+    static int previousPacketID = 0;
+    static XINPUT_STATE controllerState{ 0 };
+
+    // Only supports one controller so we use index 0. If there's no controller state then we exit
+    if (XInputGetState(0, &controllerState) != ERROR_SUCCESS)
+    {
+        if (IS_USING_CONTROLLER) {
+            std::printf("CONTROLLER HAS BEEN DISCONNECTED, SWITCHING TO KEYBOARD MODE!\n");
+            SystemParametersInfoA(SPI_SETCURSORS, NULL, nullptr, NULL);
+        }
+
+        IS_USING_CONTROLLER = 0;
+        return;
+    }
+    
+    if (!IS_USING_CONTROLLER) {
+        std::printf("CONTROLLER HAS BEEN DETECTED! SWITCHING INPUT MODES TO CONTROLLER, KEYBOARD WILL NOT BE READ.\n");
+        HCURSOR myCursor = LoadCursorA(dll, MAKEINTRESOURCEA(IDC_CURSOR1));
+        HCURSOR myCopyCursor = CopyCursor(myCursor);
+        
+        SetSystemCursor(myCopyCursor, 32512);
+        SetSystemCursor(myCopyCursor, 32513);
+        SetSystemCursor(myCopyCursor, 32515);
+        SetSystemCursor(myCopyCursor, 32516);
+        SetSystemCursor(myCopyCursor, 32646);
+        SetSystemCursor(myCopyCursor, 32649);
+    }
+    IS_USING_CONTROLLER = 1;
+
+    // Only process an individual packet once, no point in processing the dupes (could be bad!)
+    if (controllerState.dwPacketNumber == previousPacketID)
+        return;
+
+    float lX = controllerState.Gamepad.sThumbLX, lY = controllerState.Gamepad.sThumbLY;
+    float rX = controllerState.Gamepad.sThumbRX, rY = controllerState.Gamepad.sThumbRY;
+
+    // Important controller info
+    float NLX = 0.f, NLY = 0.f;
+    float NRX = 0.f, NRY = 0.f;
+    bool leftBumper = controllerState.Gamepad.bLeftTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD, rightBumper = controllerState.Gamepad.bRightTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD;
+
+    // Calculated normalized for left
+    {
+        float magnitude = sqrt(lX * lX + lY * lY);
+
+        if (magnitude > XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE)
+        {
+            // Calculate normalized after checking for dead zone
+            NLX = (lX / 32767);
+            NLY = (lY / 32767);
+        }
+        else
+        {
+            NLX = 0.f;
+            NLY = 0.f;
+        }
+    }
+
+    // Calculate normalized for right
+    {
+        float magnitude = sqrt(rX * rX + rY * rY);
+
+        if (magnitude > XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE)
+        {
+            // Calculate normalized after checking for dead zone
+            NRX = (rX / 32767);
+            NRY = (rY / 32767);
+        }
+        else
+        {
+            NRX = 0.f;
+            NRY = 0.f;
+        }
+    }
+    
+
+    IS_SLOW_DOWN = controllerState.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER;
+    IS_SCROLL_UP_DOWN = ((NRY != 0.f) && NRY > 0.f);
+    IS_SCROLL_DOWN_DOWN = ((NRY != 0.f) && NRY < 0.f);
+  
+    if (NRY < 0.f)
+        NRY = NRY * -1.f;
+
+ 
+    IS_LEFT_MOUSE_DOWN = leftBumper;
+    IS_RIGHT_MOUSE_DOWN = rightBumper;
+
+    int VARIABLE_MOUSE_SPEED = IS_SLOW_DOWN ? MOUSE_SPEED / 2 : MOUSE_SPEED;
+
+    MOVE_X = (int)(NLX * (float)(VARIABLE_MOUSE_SPEED));
+    MOVE_Y = (int)((NLY*-1.f) * (float)(VARIABLE_MOUSE_SPEED)); // Y must be inverse since its opposite on controller
+
+    int VARIABLE_SCROLL_SPEED = IS_SLOW_DOWN ? (SCROLL_SPEED / 2) : SCROLL_SPEED;
+
+    // Negate the scroll speed from keyboard based scrolling and add analog values
+    SCROLL_OFFSET = (-SCROLL_SPEED) + (int)((float)VARIABLE_SCROLL_SPEED * NRY);
 }
 
 // Updating thread for more smooth movements in between setter states (keyboard hook runs at a slow rate, so I control on my own)
@@ -137,6 +247,10 @@ void updating_thread()
                 MOVE_X -= MOUSE_SPEED - OFFSET;
             if (IS_RIGHT_DOWN)
                 MOVE_X += MOUSE_SPEED - OFFSET;
+
+            // Controller hook here since it will dynamically be changing these move values
+            update_controller_state(); // Must be called after acquiring the mutex
+
             if (IS_LEFT_MOUSE_DOWN && IS_LEFT_CLICKING == 0)
                 IS_LEFT_CLICKING = 3;
             else if (!IS_LEFT_MOUSE_DOWN && IS_LEFT_CLICKING == 1)
@@ -194,6 +308,8 @@ __declspec(dllexport) void setup_hook()
 __declspec(dllexport) void remove_hook()
 {
     UnhookWindowsHookEx(keyboard_hook);
+    SystemParametersInfoA(SPI_SETCURSORS, NULL, nullptr, NULL);
+
     std::printf("Removed global keyboard hook!\n");
 }
 
@@ -202,6 +318,7 @@ BOOL APIENTRY DllMain(HMODULE hModule,
     LPVOID lpReserved
 )
 {
+    dll = hModule;
     switch (ul_reason_for_call)
     {
         case DLL_PROCESS_ATTACH:
