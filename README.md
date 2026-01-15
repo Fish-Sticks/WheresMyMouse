@@ -1,6 +1,15 @@
 # WheresMyMouse
 ## A virtual mouse for users without a mouse, coded entirely without a mouse.
 
+### Controller Usage:
+Left analog stick is used to control the mouse.<br>
+<br>
+Right analog stick is used for scrolling.<br>
+<br>
+Hold down left trigger to make all movement operations at half speed for more precision.<br>
+<br>
+Hold down left/right bumpers for a hold click, or tap for a regular click.<br>
+
 ### Usage:
 To use this use the NUMPAD 8, 4, 6, and 2. Optionally if you want a more closer layout you can use 5 to go down instead of 2.<br>
 <br>
