@@ -24,6 +24,11 @@ int SCROLL_SPEED = WHEEL_DELTA / 4;
 // Move variables
 int MOVE_X = 0, MOVE_Y = 0, OFFSET = 0, SCROLL_OFFSET = 0;
 
+// Macro related
+static bool OSK_DEBOUNCE = false;
+static bool IS_USING_BACKSPACE = false;
+static bool BACKSPACE_DEBOUNCE = false;
+
 // Use physical variant to ignore things such as shift key doing other functionality (most games use shift as run, this would interfere and break the mouse)
 const UINT SLOW_KEY = MapVirtualKeyA(VK_NUMPAD0, MAPVK_VK_TO_VSC);
 const UINT UP_KEY = MapVirtualKeyA(VK_NUMPAD8, MAPVK_VK_TO_VSC);
@@ -35,6 +40,8 @@ const UINT LEFT_CLICK_KEY = MapVirtualKeyA(VK_NUMPAD7, MAPVK_VK_TO_VSC_EX);
 const UINT RIGHT_CLICK_KEY = MapVirtualKeyA(VK_NUMPAD9, MAPVK_VK_TO_VSC);
 const UINT SCROLL_UP_KEY = MapVirtualKeyA(VK_PRIOR, MAPVK_VK_TO_VSC);
 const UINT SCROLL_DOWN_KEY = MapVirtualKeyA(VK_NEXT, MAPVK_VK_TO_VSC);
+const UINT BACKSPACE_KEY = MapVirtualKeyA(VK_BACK, MAPVK_VK_TO_VSC);
+
 
 // Constant enums so the switch statement won't complain
 // Make sure if they are the same mapping you mark them the same value
@@ -219,6 +226,35 @@ void update_controller_state()
 
     // Negate the scroll speed from keyboard based scrolling and add analog values
     SCROLL_OFFSET = (-SCROLL_SPEED) + (int)((float)VARIABLE_SCROLL_SPEED * NRY);
+
+    if ((controllerState.Gamepad.wButtons & XINPUT_GAMEPAD_Y) && !OSK_DEBOUNCE) {
+        std::printf("Starting on screen keyboard!\n");
+
+        OSK_DEBOUNCE = true;
+
+        ShellExecuteA(
+            nullptr,
+            "open",
+            "osk.exe",
+            nullptr,
+            nullptr,
+            SW_SHOWNORMAL
+        );
+
+        std::thread([]() {
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            OSK_DEBOUNCE = false;
+        }).detach();
+    }
+
+    if ((controllerState.Gamepad.wButtons & XINPUT_GAMEPAD_X) && !BACKSPACE_DEBOUNCE) {
+        IS_USING_BACKSPACE = true;
+        BACKSPACE_DEBOUNCE = true;
+        std::thread([]() {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            BACKSPACE_DEBOUNCE = false;
+        }).detach();
+    }
 }
 
 // Updating thread for more smooth movements in between setter states (keyboard hook runs at a slow rate, so I control on my own)
@@ -284,6 +320,12 @@ void updating_thread()
         {
             IS_RIGHT_CLICKING = 1;
             mouse_event(MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, GetMessageExtraInfo());
+        }
+
+        if (IS_USING_BACKSPACE) {
+            IS_USING_BACKSPACE = false;
+            keybd_event(VK_BACK, BACKSPACE_KEY, KEYEVENTF_EXTENDEDKEY, NULL);
+            keybd_event(VK_BACK, BACKSPACE_KEY, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, NULL);
         }
 
         MOVE_X = 0;
